@@ -14,11 +14,19 @@
 @keyframes shadowBreathe{from{opacity:.3}to{opacity:.8}}
 @media(prefers-reduced-motion:reduce){#atmosphere *{animation:none!important}}
 
-/* Custom translucent ghost cursor; native cursor remains on touch devices and as fallback. */
-@media (pointer:fine){
-  html,body,#stage,#stage *,#controls,#controls *{cursor:url('ghost-cursor.png') 10 6,auto!important}
-  button,button *,input[type=range],#knockOverlay button,#controls button{cursor:url('ghost-cursor-hover.png') 10 6,pointer!important}
+/* Ghost cursor with a soft, fading purple trail (desktop only). */
+@media (pointer:fine) {
+  html,body,button,#stage,#stage *,#controls,#controls * { cursor:none!important; }
+  #ghostPointer { position:fixed; z-index:99999; width:44px; height:44px;
+    pointer-events:none; left:0; top:0; transform:translate(-14px,-9px);
+    background:url('ghost-cursor.png') center/contain no-repeat;
+    filter:drop-shadow(0 0 5px #d9a6ff) drop-shadow(0 0 10px #9653db);
+    will-change:left,top; opacity:0; }
+  #ghostPointer.hovering { background-image:url('ghost-cursor-hover.png'); }
+  #ghostTrail { position:fixed; inset:0; z-index:99998; width:100vw; height:100vh;
+    pointer-events:none; }
 }
+@media (pointer:coarse) { #ghostPointer,#ghostTrail {display:none!important;} }
 </style></head><body><main id="stage"><div id="world" style="display:none"><div id="interior"></div><div id="facade"></div><div id="door"></div><div id="closedEntrance"></div><button id="knock" aria-label="Knock on the haunted door">KNOCK</button><div id="fog"></div></div><div id="stillEntrance"></div><div id="atmosphere" aria-hidden="true"><div class="lantern left"></div><div class="lantern right"></div><div class="mist"></div><div class="shade"></div></div><div id="knockOverlay"><button id="knockNew" aria-label="Knock on the haunted door"></button></div><audio id="knockFx" preload="auto" src="https://upload.wikimedia.org/wikipedia/commons/7/7c/Door_knocker_audio.ogg"></audio><audio id="creakFx" preload="auto" src="door-creak-real.mp3"></audio><audio id="ambienceFx" preload="auto" src="nightmare-atmosphere.mp3"></audio><audio id="organFx" preload="auto" src="church-organ.mp3"></audio><audio id="impactFx" preload="auto" src="reveal-impact.mp3"></audio><video id="cinematic" preload="auto" playsinline poster="entrance-video-frame.png" src="door-opening.mp4"></video><div id="nightmare"></div><div id="flash"></div><div id="scare"></div><section id="card" aria-live="polite"><div class="eyebrow">TEE'S HOUSE OF HORRORS</div><h1 id="prizeName"></h1><div class="ornament">✧ ⛧ ✧</div><p id="prizeDesc"></p><div class="reward" id="prizeReward"></div></section></main><div id="hint"></div><nav id="controls"><button id="sound" aria-pressed="true">Sound: on</button><label class="volumeGroup" for="volume">Volume <input id="volume" type="range" min="0" max="100" value="65" aria-label="Sound volume"><span id="volumeValue">65%</span></label><button id="again" disabled>↻ Knock again</button><button id="skip">Skip animation</button><button id="reset">↺ Reset door</button><button id="full">⛶ Fullscreen</button></nav><script>
 const prizes=[
 {name:'GHOST HUNT',desc:"Don't look behind you... Something's following Tee, and now you've both been sent to investigate.",reward:'60 Minutes of Phasmophobia',art:'ghost',weight:10},
@@ -55,4 +63,66 @@ later(()=>{playFx('creakFx',.9);playFx('ambienceFx',.34);beginMovie()},1650)}
 function resetEntrance(){stopFx();timers.forEach(clearTimeout);timers=[];busy=false;chosen=null;world.classList.remove('opening','entering');cinematic.pause();cinematic.currentTime=0;cinematic.classList.remove('playing');nightmare.classList.remove('visible');nightmare.style.backgroundImage='';$('scare').classList.remove('active');$('flash').classList.remove('active');$('card').classList.remove('show');$('knock').disabled=false;$('knockNew').disabled=false;$('stillEntrance').classList.remove('hidden');$('atmosphere').classList.remove('hidden');$('knockOverlay').classList.remove('hidden');world.style.animation='none';void world.offsetWidth;world.style.animation='';updateCounter();if(soundOn)playFx('organFx',.22)}
 function resetAll(){resetEntrance()}
 $('knock').addEventListener('click',knock);$('knockNew').addEventListener('click',knock);$('again').addEventListener('click',()=>{if(!busy)return;resetEntrance()});$('reset').addEventListener('click',resetAll);$('sound').addEventListener('click',()=>{soundOn=!soundOn;$('sound').textContent=`Sound: ${soundOn?'on':'off'}`;$('sound').setAttribute('aria-pressed',String(soundOn));cinematic.muted=true;if(!soundOn)stopFx();else if(!busy)playFx('organFx',.22)});$('volume').addEventListener('input',e=>{masterVolume=Number(e.target.value)/100;$('volumeValue').textContent=`${e.target.value}%`;['knockFx','creakFx','ambienceFx','organFx','impactFx'].forEach(id=>{const a=$(id);if(a.dataset.baseVolume)a.volume=Math.min(1,Number(a.dataset.baseVolume)*masterVolume)})});$('skip').addEventListener('click',()=>{if(!busy||!chosen)return;timers.forEach(clearTimeout);timers=[];cinematic.pause();cinematic.classList.remove('playing');stopFx();showScene()});$('full').addEventListener('click',()=>{if(!document.fullscreenElement)document.documentElement.requestFullscreen?.();else document.exitFullscreen?.()});
-</script></body></html>
+</script>
+<script>
+(() => {
+  if (!window.matchMedia('(pointer:fine)').matches) return;
+  const cursor = document.createElement('div');
+  cursor.id = 'ghostPointer';
+  cursor.setAttribute('aria-hidden','true');
+  const canvas = document.createElement('canvas');
+  canvas.id = 'ghostTrail';
+  canvas.setAttribute('aria-hidden','true');
+  document.body.append(canvas,cursor);
+  const ctx = canvas.getContext('2d');
+  let particles=[], lastX=null,lastY=null, visible=false;
+  function resizeTrail() {
+    const dpr=Math.min(window.devicePixelRatio||1,2);
+    canvas.width=Math.round(innerWidth*dpr);
+    canvas.height=Math.round(innerHeight*dpr);
+    ctx.setTransform(dpr,0,0,dpr,0,0);
+  }
+  resizeTrail();
+  addEventListener('resize',resizeTrail);
+  document.addEventListener('pointermove', e => {
+    if (e.pointerType === 'touch') return;
+    cursor.style.left=e.clientX+'px';
+    cursor.style.top=e.clientY+'px';
+    cursor.style.opacity='1';
+    visible=true;
+    cursor.classList.toggle('hovering',!!e.target.closest('button,input,a,[role=button]'));
+    const x=e.clientX,y=e.clientY;
+    if (lastX!==null) {
+      const dist=Math.hypot(x-lastX,y-lastY);
+      const count=Math.min(6,Math.max(1,Math.floor(dist/7)));
+      for(let i=0;i<count;i++) {
+        const t=(i+1)/count;
+        particles.push({x:lastX+(x-lastX)*t-2,y:lastY+(y-lastY)*t+5,
+          r:2+Math.random()*3,life:1,vx:(Math.random()-.5)*.7,vy:-.25-Math.random()*.4});
+      }
+    }
+    lastX=x;lastY=y;
+    if(particles.length>100)particles.splice(0,particles.length-100);
+  },{passive:true});
+  document.addEventListener('pointerout',e=>{
+    if(!e.relatedTarget){cursor.style.opacity='0';lastX=null;lastY=null;visible=false;}
+  });
+  function frame(){
+    ctx.clearRect(0,0,innerWidth,innerHeight);
+    particles=particles.filter(p=>p.life>.025);
+    for(const p of particles){
+      const r=p.r*(1.2+(1-p.life)*1.7);
+      const glow=ctx.createRadialGradient(p.x,p.y,0,p.x,p.y,r*3);
+      glow.addColorStop(0,`rgba(205,147,255,${p.life*.26})`);
+      glow.addColorStop(.45,`rgba(146,78,220,${p.life*.12})`);
+      glow.addColorStop(1,'rgba(100,35,160,0)');
+      ctx.fillStyle=glow;
+      ctx.beginPath();ctx.arc(p.x,p.y,r*3,0,Math.PI*2);ctx.fill();
+      p.x+=p.vx;p.y+=p.vy;p.life*=.91;
+    }
+    requestAnimationFrame(frame);
+  }
+  requestAnimationFrame(frame);
+})();
+</script>
+</body></html>
