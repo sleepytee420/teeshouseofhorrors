@@ -17,12 +17,12 @@
 /* Ghost cursor with a soft, fading purple trail (desktop only). */
 @media (pointer:fine) {
   html,body,button,#stage,#stage *,#controls,#controls * { cursor:none!important; }
-  #ghostPointer { position:fixed; z-index:99999; width:44px; height:44px;
-    pointer-events:none; left:0; top:0; transform:translate(-14px,-9px);
-    background:url('ghost-cursor.png') center/contain no-repeat;
-    filter:drop-shadow(0 0 5px #d9a6ff) drop-shadow(0 0 10px #9653db);
+  #ghostPointer { position:fixed; z-index:99999; width:32px; height:32px;
+    pointer-events:none; left:0; top:0; transform:translate(-8px,-6px);
+    background:url('ghost-cursor-28.png') center/contain no-repeat;
+    filter:drop-shadow(0 0 3px #d9a6ff) drop-shadow(0 0 6px #9653db);
     will-change:left,top; opacity:0; }
-  #ghostPointer.hovering { background-image:url('ghost-cursor-hover.png'); }
+  #ghostPointer.hovering { filter:drop-shadow(0 0 5px #e6bfff) drop-shadow(0 0 8px #9653db); }
   #ghostTrail { position:fixed; inset:0; z-index:99998; width:100vw; height:100vh;
     pointer-events:none; }
 }
@@ -75,52 +75,49 @@ $('knock').addEventListener('click',knock);$('knockNew').addEventListener('click
   canvas.setAttribute('aria-hidden','true');
   document.body.append(canvas,cursor);
   const ctx = canvas.getContext('2d');
-  let particles=[], lastX=null,lastY=null, visible=false;
+  let wisps=[], lastX=null,lastY=null;
   function resizeTrail() {
     const dpr=Math.min(window.devicePixelRatio||1,2);
-    canvas.width=Math.round(innerWidth*dpr);
-    canvas.height=Math.round(innerHeight*dpr);
+    canvas.width=Math.round(innerWidth*dpr);canvas.height=Math.round(innerHeight*dpr);
     ctx.setTransform(dpr,0,0,dpr,0,0);
   }
-  resizeTrail();
-  addEventListener('resize',resizeTrail);
+  resizeTrail();addEventListener('resize',resizeTrail);
   document.addEventListener('pointermove', e => {
-    if (e.pointerType === 'touch') return;
-    cursor.style.left=e.clientX+'px';
-    cursor.style.top=e.clientY+'px';
-    cursor.style.opacity='1';
-    visible=true;
+    if(e.pointerType==='touch')return;
+    cursor.style.left=e.clientX+'px';cursor.style.top=e.clientY+'px';cursor.style.opacity='1';
     cursor.classList.toggle('hovering',!!e.target.closest('button,input,a,[role=button]'));
     const x=e.clientX,y=e.clientY;
-    if (lastX!==null) {
+    if(lastX!==null){
       const dist=Math.hypot(x-lastX,y-lastY);
-      const count=Math.min(6,Math.max(1,Math.floor(dist/7)));
-      for(let i=0;i<count;i++) {
-        const t=(i+1)/count;
-        particles.push({x:lastX+(x-lastX)*t-2,y:lastY+(y-lastY)*t+5,
-          r:2+Math.random()*3,life:1,vx:(Math.random()-.5)*.7,vy:-.25-Math.random()*.4});
+      const steps=Math.min(12,Math.max(1,Math.ceil(dist/5)));
+      for(let i=0;i<steps;i++){
+        const t=(i+1)/steps;
+        wisps.push({x:lastX+(x-lastX)*t+3,y:lastY+(y-lastY)*t+5,
+          vx:(Math.random()-.5)*.55,vy:-.22-Math.random()*.28,
+          age:0,ttl:28+Math.random()*18,rad:3+Math.random()*2});
       }
     }
     lastX=x;lastY=y;
-    if(particles.length>100)particles.splice(0,particles.length-100);
+    if(wisps.length>160)wisps.splice(0,wisps.length-160);
   },{passive:true});
   document.addEventListener('pointerout',e=>{
-    if(!e.relatedTarget){cursor.style.opacity='0';lastX=null;lastY=null;visible=false;}
+    if(!e.relatedTarget){cursor.style.opacity='0';lastX=null;lastY=null;}
   });
   function frame(){
     ctx.clearRect(0,0,innerWidth,innerHeight);
-    particles=particles.filter(p=>p.life>.025);
-    for(const p of particles){
-      const r=p.r*(1.2+(1-p.life)*1.7);
-      const glow=ctx.createRadialGradient(p.x,p.y,0,p.x,p.y,r*3);
-      glow.addColorStop(0,`rgba(205,147,255,${p.life*.26})`);
-      glow.addColorStop(.45,`rgba(146,78,220,${p.life*.12})`);
-      glow.addColorStop(1,'rgba(100,35,160,0)');
-      ctx.fillStyle=glow;
-      ctx.beginPath();ctx.arc(p.x,p.y,r*3,0,Math.PI*2);ctx.fill();
-      p.x+=p.vx;p.y+=p.vy;p.life*=.91;
+    ctx.globalCompositeOperation='screen';
+    wisps=wisps.filter(p=>p.age<p.ttl);
+    for(const p of wisps){
+      const fade=Math.pow(1-p.age/p.ttl,1.6);
+      const radius=p.rad*(1+p.age*.12);
+      const grad=ctx.createRadialGradient(p.x,p.y,0,p.x,p.y,radius*3);
+      grad.addColorStop(0,`rgba(194,132,255,${fade*.16})`);
+      grad.addColorStop(.42,`rgba(133,69,200,${fade*.085})`);
+      grad.addColorStop(1,'rgba(83,34,145,0)');
+      ctx.fillStyle=grad;ctx.beginPath();ctx.ellipse(p.x,p.y,radius*3,radius*1.5,-.3,0,Math.PI*2);ctx.fill();
+      p.x+=p.vx+Math.sin(p.age*.14)*.22;p.y+=p.vy;p.age++;
     }
-    requestAnimationFrame(frame);
+    ctx.globalCompositeOperation='source-over';requestAnimationFrame(frame);
   }
   requestAnimationFrame(frame);
 })();
